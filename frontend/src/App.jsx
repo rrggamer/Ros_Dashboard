@@ -1,32 +1,46 @@
 import { useEffect, useState } from "react";
 import "./App.css";
 
-const PI_API = "http://localhost:8000"; // or "http://<pi-ip>:8000" later
+import CpuCard from "./components/CpuCard";
+import MemoryCard from "./components/MemoryCard";
+import TempCard from "./components/TempCard";
+import LatencyCard from "./components/LatencyCard";
+import StatusGrid from "./components/StatusGrid";
+import VideoPanel from "./components/VideoPanel";
+
+
+const PI_API = "http://localhost:8000";
+const CAMERA_URL = "http://localhost:8080/stream?topic=/camera/image_raw";
 
 function App() {
   const [status, setStatus] = useState(null);
+  const [latency, setLatency] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchStatus = async () => {
+      const start = performance.now();
+
       try {
         const res = await fetch(`${PI_API}/api/status`);
         if (!res.ok) throw new Error("API error");
 
         const data = await res.json();
+        const end = performance.now();
+        setLatency(end - start);
+
         setStatus(data);
         setError("");
       } catch (err) {
-        console.error(err);
         setError("Cannot contact backend");
       } finally {
         setLoading(false);
       }
     };
 
-    fetchStatus(); // first call
-    const id = setInterval(fetchStatus, 1000); // every 1s
+    fetchStatus();
+    const id = setInterval(fetchStatus, 1000);
     return () => clearInterval(id);
   }, []);
 
@@ -34,48 +48,19 @@ function App() {
   if (error) return <div className="App error">{error}</div>;
   if (!status) return <div className="App">No data</div>;
 
-  // ---- derive some values from your JSON ----
-  const perCore = status.cpu.perCore || [];
-  const coreCount = perCore.length;
-
-  const avgLoad =
-    coreCount > 0
-      ? perCore.reduce((sum, v) => sum + v, 0) / coreCount
-      : 0;
-
-  const ramUsedGB = status.mem.used / 1e9;
-  const ramTotalGB = status.mem.total / 1e9;
-
-  const tempValue =
-    status.temp !== null && status.temp !== undefined
-      ? status.temp.toFixed(1)
-      : "—";
-
   return (
     <div className="App">
-      <h1>System Status Dashboard</h1>
+      <h1>Pi5 System Dashboard</h1>
 
-      <div className="cards">
-        <div className="card">
-          <h2>CPU Load</h2>
-          <p className="big">{avgLoad.toFixed(1)}%</p>
-          <p>{status.cpu.model}</p>
-          <p>{coreCount} cores</p>
-        </div>
+      <VideoPanel title="Pi5 Camera" streamUrl={CAMERA_URL} />
 
-        <div className="card">
-          <h2>RAM</h2>
-          <p className="big">{status.mem.usedPercent.toFixed(1)}%</p>
-          <p>
-            Used: {ramUsedGB.toFixed(2)} GB / {ramTotalGB.toFixed(2)} GB
-          </p>
-        </div>
 
-        <div className="card">
-          <h2>Temperature</h2>
-          <p className="big">{tempValue} °C</p>
-        </div>
-      </div>
+      <StatusGrid>
+        <CpuCard cpu={status.cpu} />
+        <MemoryCard mem={status.mem} />
+        <TempCard temp={status.temp} />
+        <LatencyCard latency={latency} />
+      </StatusGrid>
 
       <p className="timestamp">
         Last update: {new Date(status.timestamp).toLocaleTimeString()}
